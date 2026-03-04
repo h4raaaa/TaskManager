@@ -163,3 +163,138 @@ class ImportantTask(Task):
         base_info += f"\nДедлайн: {self.deadline}"
         base_info += f"\nНапоминание: {'установлено' if self.reminder_set else 'не установлено'}"
         return base_info
+
+    def save_to_file(self, filename: str = "tasks.json"):
+        """Сохраняет задачи в JSON файл"""
+        try:
+            data = []
+            for task in self.tasks:
+                task_data = {
+                    'type': 'Important' if isinstance(task, ImportantTask) else 'Regular',
+                    'title': task.title,
+                    'description': task.description,
+                    'priority': task.priority,
+                    'completed': task.completed,
+                    'created_at': task.created_at.isoformat() if task.created_at else None,
+                    'completed_at': task.completed_at.isoformat() if task.completed_at else None
+                }
+
+                # Добавляем специфичные для ImportantTask поля
+                if isinstance(task, ImportantTask):
+                    task_data['deadline'] = task.deadline.isoformat() if task.deadline else None
+
+                data.append(task_data)
+
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+
+            print(f"✓ Задачи сохранены в файл {filename}")
+
+        except PermissionError:
+            print(f"✗ Нет прав для записи в файл {filename}")
+        except Exception as e:
+            print(f"✗ Ошибка при сохранении: {e}")
+
+    @classmethod
+    def load_from_file(cls, name: str, filename: str = "tasks.json"):
+        """
+        Загружает задачи из JSON файла
+
+        Args:
+            name: Название менеджера задач
+            filename: Имя файла
+        """
+        manager = cls(name)
+
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+
+            for item in data:
+                try:
+                    if item['type'] == 'Important':
+                        task = ImportantTask(
+                            item['title'],
+                            item['description'],
+                            priority=item.get('priority', 1),
+                            deadline=datetime.fromisoformat(item['deadline']) if item.get('deadline') else None
+                        )
+                    else:
+                        task = Task(
+                            item['title'],
+                            item['description'],
+                            priority=item.get('priority', 1)
+                        )
+
+                    # Восстанавливаем состояние
+                    if item.get('completed'):
+                        task.completed = True
+                    if item.get('completed_at'):
+                        task.completed_at = datetime.fromisoformat(item['completed_at'])
+                    if item.get('created_at'):
+                        task.created_at = datetime.fromisoformat(item['created_at'])
+
+                    manager.tasks.append(task)
+
+                except Exception as e:
+                    print(f"✗ Ошибка при загрузке задачи {item.get('title', 'unknown')}: {e}")
+                    continue
+
+            print(f"✓ Загружено {len(manager)} задач из файла {filename}")
+
+        except FileNotFoundError:
+            print(f"✗ Файл {filename} не найден")
+        except json.JSONDecodeError:
+            print(f"✗ Ошибка формата JSON в файле {filename}")
+        except Exception as e:
+            print(f"✗ Ошибка при загрузке: {e}")
+
+        return manager
+class Task:
+    # ... (предыдущий код) ...
+
+    @staticmethod
+    def validate_priority(priority):
+        """Проверяет корректность приоритета"""
+        valid_priorities = ["низкий", "средний", "высокий"]
+        return priority in valid_priorities
+
+    @staticmethod
+    def get_priority_emoji(priority):
+        """Возвращает эмодзи для приоритета"""
+        emojis = {
+            "низкий": "⬇️",
+            "средний": "➡️",
+            "высокий": "⬆️"
+        }
+        return emojis.get(priority, "❓")
+
+    @classmethod
+    def create_from_string(cls, task_string: str):
+        """
+        Создает задачу из строки формата: "Название | Описание | Приоритет"
+
+        Args:
+            task_string: Строка в формате "Название | Описание | Приоритет"
+
+        Returns:
+            Экземпляр Task или None в случае ошибки
+        """
+        try:
+            parts = task_string.split('|')
+            title = parts[0].strip()
+            description = parts[1].strip() if len(parts) > 1 else ""
+            priority = parts[2].strip() if len(parts) > 2 else "средний"
+
+            if not cls.validate_priority(priority):
+                print(f"Предупреждение: Некорректный приоритет '{priority}'. Используется 'средний'.")
+                priority = "средний"
+
+            return cls(title, description, priority)
+
+        except IndexError as e:
+            print(f"Ошибка формата строки: недостаточно частей в строке '{task_string}'. {e}")
+            return None
+        except Exception as e:
+            print(f"Ошибка создания задачи из строки: {e}")
+            return None
